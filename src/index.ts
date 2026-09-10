@@ -98,6 +98,49 @@ export default async function workbuddyConnect(pi: ExtensionAPI): Promise<void> 
       // Runtime model discovery; omp bounds this to 15 s.
       fetchDynamicModels: async () => (await shim.dynamicModels()).map(toProviderModel),
     })
+    pi.registerCommand("workbuddy-refresh", {
+      description: "强制重新拉取 WorkBuddy 上游最新模型列表（绕过 omp 24h 动态发现缓存）",
+      handler: async (_args, ctx) => {
+        const credential = await store.current()
+        if (credential === undefined) {
+          ctx.ui.notify("WorkBuddy 未登录，无法刷新模型列表（先登录桌面版）", "error")
+          return
+        }
+        const beforeIds = new Set(shim.currentModels().map(model => model.id))
+        // Probe upstream directly so an offline failure is distinguishable from
+        // "no change" (refreshProvider's internal fetch swallows errors, and
+        // omp gates non-authoritative retries behind a 5-minute backoff).
+        let fresh: readonly WorkBuddyUpstreamModel[]
+        try {
+          fresh = await client.fetchModels(credential)
+        } catch {
+          ctx.ui.notify(`WorkBuddy 上游不可达，已保留现有 ${beforeIds.size} 个模型`, "warning")
+          return
+        }
+        if (fresh.length === 0) {
+          ctx.ui.notify("WorkBuddy 上游返回空列表，已保留现有模型", "warning")
+          return
+        }
+        try {
+          // Strategy defaults to "online": unconditionally forces a live fetch.
+          await ctx.modelRegistry.refreshProvider(WORKBUDDY_PROVIDER)
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error)
+          ctx.ui.notify(`强刷失败：${message}（已保留现有模型）`, "error")
+          return
+        }
+        // refreshProvider's fetch path updates the shim's in-memory catalog on a
+        // non-empty upstream answer, so `currentModels()` now reflects the live list.
+        const afterIds = new Set(shim.currentModels().map(model => model.id))
+        const added = [...afterIds].filter(id => !beforeIds.has(id)).length
+        ctx.ui.notify(
+          added > 0
+            ? `已强制刷新：共 ${afterIds.size} 个模型，本次新增 ${added} 个`
+            : `已强制刷新：共 ${afterIds.size} 个模型，无新增`,
+          "info",
+        )
+      },
+    })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     pi.logger.error("workbuddy-connect: shim failed to start", { error: message })
