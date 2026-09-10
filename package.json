@@ -1,0 +1,17 @@
+{
+  "name": "omp-workbuddy-connect",
+  "version": "0.1.0",
+  "description": "Bring WorkBuddy desktop app models into omp with zero configuration (reuses the app's sign-in).",
+  "type": "module",
+  "omp": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@oh-my-pi/pi-coding-agent": "^18.1.16",
+    "@types/node": "^22.20.2",
+    "typescript": "^7.0.2"
+  }
+}
