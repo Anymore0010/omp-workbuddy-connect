@@ -20,6 +20,24 @@ WorkBuddy 桌面端上游（`copilot.tencent.com` / `workbuddy.ai`）**不是** 
 
 扩展进程内运行、**不沙箱化**，且只接受 loopback 来源的请求（拒绝非 loopback 的 `Host` 头，防止 DNS rebinding 攻击）。
 
+## 手动刷新模型列表
+
+omp 对 `fetchDynamicModels` 的动态列表有 **24 小时缓存**：正常打开 omp 时，只要上次拉取在 24h 内，就会直接复用缓存、不请求上游——所以新模型不会每次都实时出现。
+
+插件提供 **`/workbuddy-refresh`** 命令强制绕过该缓存，手动拉取上游最新列表：
+
+```
+/workbuddy-refresh
+```
+
+行为：
+
+- 先探活上游。若未登录桌面版、或上游不可达、或返回空列表，会提示对应原因并**保留现有列表**，不会清空。
+- 成功则调用 `ctx.modelRegistry.refreshProvider("workbuddy")`（默认 `online` 策略，不受 24h 缓存门控）强制联网刷新。
+- 完成后弹出提示，例如 `已强制刷新：共 N 个模型，本次新增 X 个`（无新增则提示「无新增」）。
+
+刷新后到 `/model` 里即可看到 `workbuddy/*` 的最新可选模型。
+
 ## 依赖环境
 
 - Windows / macOS / Linux（支持 WSL），且**已安装并登录** WorkBuddy 桌面应用。
