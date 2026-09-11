@@ -26,6 +26,35 @@
   - **推荐 `gh` CLI**：`gh auth login` 后可直接用 `gh release create/upload`
   - **无 `gh` 时**：环境变量 `GH_TOKEN`（或 `GITHUB_TOKEN`），scope 至少 `public_repo`；用 `curl` 调 GitHub API
 
+## 提交身份（强制，首次 clone 后必须先做）
+
+本仓库是**公开仓库**，提交身份必须脱敏，不得写入公司名 / 公司邮箱。
+
+| 项 | 值 |
+| --- | --- |
+| `user.name` | `YuCN` |
+| `user.email` | `yuchen0010@qq.com` |
+
+**在任何新机器上 clone 本仓库后，第一条命令就是设置仓库级身份**（不要依赖 global 配置——若该机器的 global 是公司身份，提交会直接把公司邮箱写进公开历史）：
+
+```bash
+git config --local user.name  "YuCN"
+git config --local user.email "yuchen0010@qq.com"
+
+# 核对：两条输出都必须是上面的值
+git config --local user.name
+git config --local user.email
+git var GIT_AUTHOR_IDENT      # 必须是 YuCN <yuchen0010@qq.com>
+```
+
+提交后核对作者与提交者两个字段都已脱敏：
+
+```bash
+git log --format='author=%an <%ae> | committer=%cn <%ce>' -1
+```
+
+> 背景：本仓库曾因某台机器的全局 git 身份配置不当，把非预期邮箱写入了公开历史，后经历史改写 + force-push 修复。**设置仓库级身份是防止复发的唯一手段**——不要依赖机器的全局配置。
+
 ## 版本更新流程（两台机器一致）
 
 > ⚠️ 核心原则：**版本号、tag、Release、附件四者必须对应同一个 commit**。tag 一旦推送不要移动；出错就发新补丁版本（如 `v0.1.1` → `v0.1.2`）。
