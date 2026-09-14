@@ -36,9 +36,16 @@ export class WorkBuddyShim {
     this.server = createServer((req, res) => {
       // A rejection escaping the listener is an unhandled rejection, which omp's
       // postmortem handler treats as fatal and tears down the whole session.
+      // `res` itself can also emit 'error' (EPIPE / ERR_STREAM_DESTROYED) when
+      // the client aborts mid-stream — that is an event, not a rejection, so it
+      // needs its own guard.
+      res.on("error", () => {})
       this.handle(req, res).catch((error: unknown) => {
         this.failRequest(res, error)
       })
+    })
+    this.server.on("clientError", (_error: Error, socket) => {
+      socket.destroy()
     })
     this.server.listen(0, "127.0.0.1", () => {
       const address = this.server?.address()
@@ -151,12 +158,17 @@ export class WorkBuddyShim {
   }
 
   private sendJson(res: ServerResponse, status: number, body: unknown): void {
+    if (res.destroyed || res.writableEnded) return
     const payload = Buffer.from(JSON.stringify(body))
-    res.writeHead(status, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Content-Length": payload.length,
-    })
-    res.end(payload)
+    try {
+      res.writeHead(status, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Length": payload.length,
+      })
+      res.end(payload)
+    } catch {
+      // The client vanished between the guard and the write; nothing to send.
+    }
   }
 
   /**

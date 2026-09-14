@@ -154,8 +154,9 @@ curl -s -H "Authorization: Bearer $GH_TOKEN" \
 
 ## 硬编码常量（升级 WorkBuddy 后需要复核）
 
-- `src/upstream.ts` 中的 `"X-IDE-Version": "5.5.4"` —— 若 WorkBuddy 桌面版升级，此值会过时（不影响功能，仅影响用量页版本显示），可随版本更新一并调整。
-- `src/upstream.ts` 中的 `CLIENT_UA = "CLI/2.63.2 CodeBuddy/2.63.2"` —— 上游 User-Agent，若接口行为变化需同步。
+- `src/upstream.ts` 中的 `DESKTOP_CLIENT_VERSION = "5.5.4"`（chat 的 `X-IDE-Version` 与桌面 UA 的 `WorkBuddy/<v>` 段）—— 若 WorkBuddy 桌面版升级，此值会过时（不影响功能，仅影响用量页版本显示），可随版本更新一并调整。
+- `src/upstream.ts` 中的 `DESKTOP_CLI_VERSION = "2.137.1"`（桌面 UA 的 `CLI/<v>` 段）—— 对齐官方内置 CLI 版本，接口行为变化时同步。
+- `src/upstream.ts` 中的 `CLIENT_UA = "CLI/2.63.2 CodeBuddy/2.63.2"` —— refresh/catalog 路径的 User-Agent（chat 用桌面 UA），若接口行为变化需同步。
 - `src/catalog.ts` 的兜底模型表 —— 上游在线时会被 `fetchDynamicModels` 覆盖；仅在离线/首次启动时使用，可选更新。
 
 ## 安装与分发（写进用户文档的用法）

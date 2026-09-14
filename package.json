@@ -1,6 +1,6 @@
 {
   "name": "omp-workbuddy-connect",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Bring WorkBuddy desktop app models into omp with zero configuration (reuses the app's sign-in).",
   "type": "module",
   "omp": {

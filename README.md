@@ -93,6 +93,7 @@ omp 加载的入口是 `src/index.ts`。其余模块：
 - 记录发生在**服务端，按账号归档**（`X-User-Id` + bearer token）。插件以你的桌面端身份发起请求，因此落在同一个云端会话/用量历史里。
 - 已核查过 WorkBuddy 桌面客户端包（`app.asar`）：其中**不存在**"不记录/临时会话"类开关或字段（`noMemory`、`temporary`、`store:false` 等一律无命中），请求体也只由 `messages/model/stream/stream_options/tool_choice/reasoning_effort` 构成，没有可供镜像的持久化开关。
 - 结论：这是**上游账号属性**，不是可配置项。介意记录的话，唯一可控手段是**改用不共享该账号的渠道**。
+- 注意：chat 请求会**以桌面客户端身份**发出（UA、`X-IDE-*`、`X-Agent-Purpose: conversation`、会话头族），这是为了让上游用量页正确归因、并让同一轮的多次上游调用聚合成一条记录。**它不改变"是否记录"**——记录仍按账号发生在服务端。
 
 ## 免责声明
 
