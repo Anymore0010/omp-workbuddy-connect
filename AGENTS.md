@@ -76,9 +76,9 @@ node node_modules/typescript/lib/tsc.js --noEmit -p tsconfig.json
 `tsc` 必须以 exit 0 结束。扩展本身可在本机实测加载：
 
 ```bash
-omp models -e D:/Projects/omp-workbuddy-connect        # 应列出 workbuddy (N)
+omp models -e "$REPO"        # 应列出 workbuddy (N)；$REPO = 本机仓库根目录（如 D:/Projects/omp-plugins/omp-workbuddy-connect）
 # 或已 link 的情况下（仓库根目录）：
-cd /d/Projects/omp-workbuddy-connect && omp plugin link . && omp models | grep workbuddy
+cd "$REPO" && omp plugin link . && omp models | grep workbuddy
 ```
 
 端到端调用（需本机 WorkBuddy 桌面版已登录）：
