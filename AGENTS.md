@@ -4,7 +4,7 @@
 
 ## 仓库概览
 
-- **远程仓库**：`https://github.com/luzov/omp-workbuddy-connect.git`
+- **远程仓库**：`https://github.com/Anymore0010/omp-workbuddy-connect.git`
 - **默认分支**：`main`
 - **包名 / 版本**：`omp-workbuddy-connect`，版本号在 `package.json` 的 `version` 字段
 - **运行时依赖**：无。扩展只用 Node 内置模块（`node:os/path/fs/http`）；`@oh-my-pi/pi-coding-agent` 仅作**类型**导入（运行时被擦除）。因此**分发物不需要 `node_modules`**。
@@ -140,7 +140,7 @@ gh release create v0.1.2 ../omp-workbuddy-connect-portable.zip \
 # 创建 release（拿到 id）
 RID=$(curl -s -X POST \
   -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-  https://api.github.com/repos/luzov/omp-workbuddy-connect/releases \
+  https://api.github.com/repos/Anymore0010/omp-workbuddy-connect/releases \
   -d '{"tag_name":"v0.1.2","name":"v0.1.2 — <标题>","body":"<变更说明>"}' \
   | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).id))")
 
@@ -149,7 +149,7 @@ curl -s -X POST \
   -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
   -H "Content-Type: application/zip" \
   --data-binary @../omp-workbuddy-connect-portable.zip \
-  "https://uploads.github.com/repos/luzov/omp-workbuddy-connect/releases/$RID/assets?name=omp-workbuddy-connect-portable.zip"
+  "https://uploads.github.com/repos/Anymore0010/omp-workbuddy-connect/releases/$RID/assets?name=omp-workbuddy-connect-portable.zip"
 ```
 
 **方式 C（无凭据）**：在 GitHub 网页 Releases 页手动 Draft/发布 Release，并拖入 zip。
@@ -162,7 +162,7 @@ git status -sb                     # 应为 ## main...origin/main（无 ahead/be
 
 # 确认 release 有附件（方式 B 时）
 curl -s -H "Authorization: Bearer $GH_TOKEN" \
-  https://api.github.com/repos/luzov/omp-workbuddy-connect/releases/tags/v0.1.2 \
+  https://api.github.com/repos/Anymore0010/omp-workbuddy-connect/releases/tags/v0.1.2 \
   | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const r=JSON.parse(s);console.log(r.name);r.assets.forEach(a=>console.log(' asset:',a.name,a.size))})"
 ```
 
@@ -192,7 +192,7 @@ curl -s -H "Authorization: Bearer $GH_TOKEN" \
 
 ```bash
 # Git 直装
-omp install github:luzov/omp-workbuddy-connect
+omp install github:Anymore0010/omp-workbuddy-connect
 
 # 或下载 Release 的 portable zip，解压后
 omp plugin link .
