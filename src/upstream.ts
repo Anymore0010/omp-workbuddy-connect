@@ -5,6 +5,7 @@
  * workbuddy2api reference.
  */
 
+import { createHash, randomBytes } from "node:crypto"
 import type { WorkBuddyCredential } from "./auth"
 
 export type WorkBuddyUpstreamModel = {
@@ -32,6 +33,14 @@ const CN_BILLING_BASE = "https://www.codebuddy.cn"
 const GLOBAL_BASE = "https://www.workbuddy.ai"
 
 const CLIENT_UA = "CLI/2.63.2 CodeBuddy/2.63.2"
+/**
+ * Desktop-client identity presented on chat requests (workbuddy2api-style
+ * camouflage). The official desktop client composes
+ * `WorkBuddy/<appVer> <product>/<appVer> CLI/<cliVer>`; the product token is
+ * `WorkBuddy` for CN. Non-chat paths (refresh/catalog) keep `CLIENT_UA`.
+ */
+const DESKTOP_CLIENT_VERSION = "5.5.4"
+const DESKTOP_CLI_VERSION = "2.137.1"
 const ERROR_BODY_LIMIT = 4096
 
 const EFFORT_VALUES = new Set(["low", "medium", "high", "xhigh", "max"])
@@ -65,23 +74,50 @@ function commonHeaders(credential: WorkBuddyCredential): Record<string, string> 
   }
 }
 
-export function chatHeaders(credential: WorkBuddyCredential): Record<string, string> {
+/**
+ * Chat request headers. Mimics the official desktop client the way
+ * workbuddy2api does: the desktop User-Agent, the X-IDE-* attribution group
+ * plus `X-Agent-Purpose: conversation`, the `X-CodeBuddy-Request` risk-gate
+ * header, a realm-matched `Accept-Language`, and the conversation header
+ * family (`X-Conversation-*` / `X-Request-ID` / `X-Root-Request-ID` /
+ * `X-Trace-ID` / `X-B3-*`) the backend aggregates request rows by.
+ *
+ * `conversationRequestId` is the turn-level aggregation key: the caller reuses
+ * one value across a single user send (all tool-call rounds / retries) so the
+ * upstream usage view shows one row per turn instead of one per request.
+ */
+export function chatHeaders(credential: WorkBuddyCredential, conversationRequestId: string): Record<string, string> {
+  const realm = regionOf(credential.domain)
+  const messageId = randomBytes(16).toString("hex")
   const headers: Record<string, string> = {
     ...commonHeaders(credential),
     "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+    "User-Agent": `WorkBuddy/${DESKTOP_CLIENT_VERSION} WorkBuddy/${DESKTOP_CLIENT_VERSION} CLI/${DESKTOP_CLI_VERSION}`,
+    "Accept-Language": realm === "global" ? "en-US" : "zh-CN",
+    // Risk gate head the official client sends on every API request.
+    "X-CodeBuddy-Request": "1",
     // 安全红线：chat 请求绝不携带 refresh token。
     ...(credential.uid === "" ? { "X-No-User-Id": "1" } : { "X-User-Id": credential.uid }),
     ...(credential.enterpriseId === undefined || credential.enterpriseId === ""
       ? { "X-No-Enterprise-Id": "1" }
       : { "X-Enterprise-Id": credential.enterpriseId }),
     ...(credential.domain === "" ? { "X-No-Department-Info": "1" } : { "X-Domain": credential.domain }),
-    "X-Product": "SaaS",
-    // Client identification. The billing usage page records a per-request
-    // client label from X-IDE-Name; requests without it are logged with a
-    // blank client. `WorkBuddy` is the desktop client spelling.
+    // Attribution group (usage-page client label + agent purpose).
+    "X-Agent-Purpose": "conversation",
     "X-IDE-Name": "WorkBuddy",
-    "X-IDE-Type": "CodeBuddy",
-    "X-IDE-Version": "5.5.4",
+    "X-IDE-Type": "WorkBuddy",
+    "X-IDE-Version": DESKTOP_CLIENT_VERSION,
+    "X-Product": "WorkBuddy",
+    // Conversation header family: turn-level aggregation key + message-level id.
+    "X-Conversation-Request-ID": conversationRequestId,
+    "X-Root-Request-ID": conversationRequestId,
+    "X-Conversation-Message-ID": messageId,
+    "X-Request-ID": messageId,
+    "X-Trace-ID": conversationRequestId,
+    "X-B3-TraceId": conversationRequestId,
+    "X-B3-SpanId": messageId.slice(0, 16),
+    "X-B3-Sampled": "1",
   }
   return headers
 }
@@ -274,6 +310,46 @@ function resolveReasoning(model: Record<string, unknown>): WorkBuddyUpstreamMode
   return result
 }
 
+/**
+ * Derive the turn-level aggregation key from the request body: hash of the
+ * index + text of the last `user` message. Within one user send every
+ * upstream round (tool-call loops, retries) carries the same tail user
+ * message, so they collapse to one key — mirroring the official client's
+ * one-id-per-send behaviour. A body without a textual user message falls back
+ * to a fresh random id (no aggregation, never a fake key).
+ */
+function conversationRequestIdFor(bodyJson: string): string {
+  let key = ""
+  try {
+    const parsed: unknown = JSON.parse(bodyJson)
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const messages = (parsed as Record<string, unknown>).messages
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const message = messages[i]
+          if (message === null || typeof message !== "object") continue
+          const entry = message as Record<string, unknown>
+          if (entry.role !== "user") continue
+          const content = entry.content
+          const text = typeof content === "string"
+            ? content
+            : Array.isArray(content)
+              ? content
+                  .map((part) => (part !== null && typeof part === "object" ? (part as Record<string, unknown>).text : ""))
+                  .filter((t): t is string => typeof t === "string")
+                  .join("")
+              : ""
+          if (text !== "") key = `u${i}:${text}`
+          break
+        }
+      }
+    }
+  } catch {
+    // Unparseable body: no aggregation key.
+  }
+  return key === "" ? randomBytes(16).toString("hex") : createHash("sha256").update(key).digest("hex").slice(0, 32)
+}
+
 export class WorkBuddyUpstreamClient {
   private efforts: Map<string, string[]> = new Map()
 
@@ -281,7 +357,10 @@ export class WorkBuddyUpstreamClient {
   async chatStream(credential: WorkBuddyCredential, bodyJson: string): Promise<Response> {
     return fetch(`${chatBase(credential)}/v2/chat/completions`, {
       method: "POST",
-      headers: { ...chatHeaders(credential), Authorization: `Bearer ${credential.accessToken}` },
+      headers: {
+        ...chatHeaders(credential, conversationRequestIdFor(bodyJson)),
+        Authorization: `Bearer ${credential.accessToken}`,
+      },
       body: prepareChatBody(bodyJson, this.efforts),
     })
   }

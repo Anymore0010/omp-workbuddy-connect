@@ -85,6 +85,16 @@ omp 加载的入口是 `src/index.ts`。其余模块：
 - `src/server.ts` — loopback OpenAI 兼容 shim + SSE 归一化
 - `src/catalog.ts` — 静态兜底模型目录
 
+## 关于聊天记录
+
+通过本插件发出的对话**会像桌面端一样被 WorkBuddy 服务端记录**，这**不是插件行为**，无法从插件侧关闭：
+
+- 插件唯一的落盘是 `~/.omp/.workbuddy-auth.json`（复制复用桌面端登录态），**不写入任何聊天内容**。
+- 记录发生在**服务端，按账号归档**（`X-User-Id` + bearer token）。插件以你的桌面端身份发起请求，因此落在同一个云端会话/用量历史里。
+- 已核查过 WorkBuddy 桌面客户端包（`app.asar`）：其中**不存在**"不记录/临时会话"类开关或字段（`noMemory`、`temporary`、`store:false` 等一律无命中），请求体也只由 `messages/model/stream/stream_options/tool_choice/reasoning_effort` 构成，没有可供镜像的持久化开关。
+- 结论：这是**上游账号属性**，不是可配置项。介意记录的话，唯一可控手段是**改用不共享该账号的渠道**。
+- 注意：chat 请求会**以桌面客户端身份**发出（UA、`X-IDE-*`、`X-Agent-Purpose: conversation`、会话头族），这是为了让上游用量页正确归因、并让同一轮的多次上游调用聚合成一条记录。**它不改变"是否记录"**——记录仍按账号发生在服务端。
+
 ## 免责声明
 
 - 本项目**仅供个人学习与研究使用**。它驱动的是**你自己**机器上**你自己的** WorkBuddy 账号，不适用于任何商业用途或超出个人合理使用范围的情形。

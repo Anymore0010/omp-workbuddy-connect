@@ -34,7 +34,18 @@ export class WorkBuddyShim {
     if (this.server !== undefined) return Promise.resolve(this.port)
     const { promise, resolve } = Promise.withResolvers<number>()
     this.server = createServer((req, res) => {
-      void this.handle(req, res)
+      // A rejection escaping the listener is an unhandled rejection, which omp's
+      // postmortem handler treats as fatal and tears down the whole session.
+      // `res` itself can also emit 'error' (EPIPE / ERR_STREAM_DESTROYED) when
+      // the client aborts mid-stream — that is an event, not a rejection, so it
+      // needs its own guard.
+      res.on("error", () => {})
+      this.handle(req, res).catch((error: unknown) => {
+        this.failRequest(res, error)
+      })
+    })
+    this.server.on("clientError", (_error: Error, socket) => {
+      socket.destroy()
     })
     this.server.listen(0, "127.0.0.1", () => {
       const address = this.server?.address()
@@ -147,12 +158,35 @@ export class WorkBuddyShim {
   }
 
   private sendJson(res: ServerResponse, status: number, body: unknown): void {
+    if (res.destroyed || res.writableEnded) return
     const payload = Buffer.from(JSON.stringify(body))
-    res.writeHead(status, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Content-Length": payload.length,
+    try {
+      res.writeHead(status, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Length": payload.length,
+      })
+      res.end(payload)
+    } catch {
+      // The client vanished between the guard and the write; nothing to send.
+    }
+  }
+
+  /**
+   * Translate a thrown error into an OpenAI-shaped error response. The upstream
+   * closes the socket without a response when the account hits its quota, so a
+   * mid-request failure must surface as a 502 to omp — not as a rejection.
+   */
+  private failRequest(res: ServerResponse, error: unknown): void {
+    if (res.headersSent) {
+      if (!res.writableEnded) res.end()
+      return
+    }
+    const message = error instanceof Error ? error.message : String(error)
+    const kind = this.classifyError(0, message)
+    const status = kind === "hard_credit" ? 402 : kind === "soft_rate" ? 429 : 502
+    this.sendJson(res, status, {
+      error: { message: `workbuddy upstream (${kind}): ${message}`, type: kind },
     })
-    res.end(payload)
   }
 
   private async readBody(req: IncomingMessage): Promise<unknown> {
